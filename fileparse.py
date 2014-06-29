@@ -4,9 +4,11 @@ import csv
 import pandas as pd 
 %matplotlib
 
+# convert to string & get rid of trailing whitespaces
 def cleanUp(strSeries):
 	return strSeries.apply(str).apply(str.strip)
-	
+
+# check if line still contains spaces after the cleanUp
 def checkUp(strSeries):
 	return (strSeries.str.contains(' '))
 
@@ -15,16 +17,61 @@ def readFile(filename, strList):
 	df = df.dropna(how='all')
 	df.columns = map(str.lower, df.columns)
 	categ = df.columns
-	valid = []
+	fromCol = []
+	fromList = []
 	for l, t in strList:
 		for c in categ:
 			if (compare(c, l)):
 				categ.remove(c)
-				valid.append(c)
+				# only append the ones from strList that are present 
+				# in the df.columns series
+				fromCol.append(c)
+				fromList.append(l)
 				if (t):
-					df.c = cleanUp(df.c)
-	df.sort(columns=valid, inplace=True)
+					df[c] = cleanUp(df[c])
+	if (len(fromCol) > 0): 
+		df.sort(columns=fromCol, inplace=True)
 
+
+def findAll(listOfLists, fromList):
+	solution = []
+	for l in listofLists:
+		pos = len(solution)
+		solution.append([])
+		for i in l:
+			if i in fromList:
+				solution[pos].append(fromList.index(i))
+	return solution
+
+# assumption that the length of these lists are > 0 
+def findDesc(fromList, fromCol, df):
+	fp = findProduct(fromList)
+	if (fp >= 0 & ('description' in fromList)):
+		d = fromList.index('description')
+		dSer = df[fromCol[d]][~df[fromCol[d]].str.contains('nan')].tolist()
+		fpSer = df[fromCol[fp]][~df[fromCol[fp]].str.contains('nan')].tolist()
+		if (len(dSer) == 0 & len(fpSer) == 0):
+			return None
+		elif (len(dSer) == 0):
+			checkDup(fpSer)
+		elif (len(fpSer) == 0):
+			checkDup(dSer)
+		else:
+			checkDup(fpSer)
+			checkDup(dSer)
+
+
+def checkDup(list):
+
+
+
+def findProduct(fromList):
+	if ('production' in fromList):
+		return fromList.index('production')
+	elif ('part #' in fromList):
+		return fromList.index('part #')
+	else: 
+		return -1
 
 def compare(inTbl, inList):
 	# get rid of all whitespaces
