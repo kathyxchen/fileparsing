@@ -41,10 +41,10 @@ def readFile(filename, strList):
 		# could make a function that identifies this in case my argument is ordered differently.
 		df = df[~df[fromCol[0]].str.contains(fromCol[0])]
 
-def findPartNum(str):
-	num = ''.join(x for x in str if x.isdigit())
-	cutoff = ((float(len(num))/float(len(str))) >= 0.6)
-	return (len(str) >= 8) & cutoff
+def findPartNum(word):
+	num = ''.join(x for x in word if x.isdigit())
+	cutoff = ((float(len(num))/float(len(word))) >= 0.6)
+	return (len(word) >= 8) & cutoff
 
 def findAll(listOfLists, fromList):
 	solution = []
@@ -57,14 +57,47 @@ def findAll(listOfLists, fromList):
 	return solution
 
 # assumption that the length of these lists are > 0 
-def findDesc(fromList, fromCol, df):
+def findInfo(fromList, fromCol, df):
 	n = findProduct(fromList)
 	if (n >= 0 & ('description' in fromList)):
 		d = fromList.index('description')
 		dSer = df[fromCol[d]][~df[fromCol[d]].str.contains('nan')].tolist()
-		nSer = df[fromCol[fp]][~df[fromCol[fp]].str.contains('nan')].tolist()
+		nSer = df[fromCol[n]][~df[fromCol[n]].str.contains('nan')].tolist()
 		merged = merged(dSer, nSer)
+		# get rid of duplicates
 		mergedSet = set(merged) 
+		return prodInfo(mergedSet)
+	elif ('description' in fromList):
+		d = fromList.index('description')
+		dSer = df[fromCol[d]][~df[fromCol[d]].str.contains('nan')].tolist()
+		return prodInfo(set(dSer))
+	elif (n >= 0):
+		nSer = df[fromCol[n]][~df[fromCol[n]].str.contains('nan')].tolist()
+		return prodInfo(set(nSer))
+	else:
+		return {}
+
+def prodInfo(mergedSet):
+	prodInfo = {}
+	for px, s in enumerate(mergedSet):
+		# go through each string in the set
+		# split the words into a list
+		des = mergedSet.pop().split()
+		pos = -1
+		inDict = False
+		for idx, w in enumerate(des):
+			# check for part num not already in list
+			if (findPartNum(w)):
+				pos = idx
+				inDict = (w in prodInfo)
+				break
+		if (pos >= 0 & not inDict):
+			# remove the part number from the des list
+			prodInfo[des.pop(idx)] = (' '.join(des))
+		else: 
+			name = ' '.join(des)[:128]
+			prodInfo[name] = (' '.join(des))
+	return prodInfo
 
 def merged(dList, pList):
 	merged = []
@@ -104,8 +137,8 @@ def findPrice(fromList, fromCol, df):
 
 def compare(inTbl, inList):
 	# get rid of all whitespaces
-	inList = "".join(inList.split())
-	inTbl = "".join(inTbl.split())
+	inList = "".join(inList.split()).lower()
+	inTbl = "".join(inTbl.split()).lower()
 	# if too long to begin with
 	if (len(inTbl) > (float(len(inList)) + 0.50 * float(len(inList)))):
 		return False
