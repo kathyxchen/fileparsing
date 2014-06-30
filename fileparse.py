@@ -12,17 +12,23 @@ def cleanUp(strSeries):
 def checkUp(strSeries):
 	return (strSeries.str.contains(' '))
 
+#strList is a list of tuples with fields that should be type
+# string marked as True.
 def readFile(filename, strList):
 	df = pd.read_csv(filename, error_bad_lines=False)
 	df = df.dropna(how='all')
-	df.columns = map(str.lower, df.columns)
+	# if the first line is a header--
+	# could replace this with a function that checked 
+	# that the majority of rows were unnamed.
+	if (df.columns[0] == 'Unnamed: 0'):
+		df.iloc[0] = map(str.lower, df.iloc[0])
+		df.columns = df.iloc[0]
 	categ = df.columns
 	fromCol = []
 	fromList = []
 	for l, t in strList:
 		for c in categ:
 			if (compare(c, l)):
-				categ.remove(c)
 				# only append the ones from strList that are present 
 				# in the df.columns series
 				fromCol.append(c)
@@ -30,8 +36,15 @@ def readFile(filename, strList):
 				if (t):
 					df[c] = cleanUp(df[c])
 	if (len(fromCol) > 0): 
-		df.sort(columns=fromCol, inplace=True)
+		df.sort(columns=fromCol[0], inplace=True)
+		# this only works b/c I know the first one will be assigned type string.
+		# could make a function that identifies this in case my argument is ordered differently.
+		df = df[~df[fromCol[0]].str.contains(fromCol[0])]
 
+def findPartNum(str):
+	num = ''.join(x for x in str if x.isdigit())
+	cutoff = ((float(len(num))/float(len(str))) >= 0.6)
+	return (len(str) >= 8) & cutoff
 
 def findAll(listOfLists, fromList):
 	solution = []
@@ -45,25 +58,24 @@ def findAll(listOfLists, fromList):
 
 # assumption that the length of these lists are > 0 
 def findDesc(fromList, fromCol, df):
-	fp = findProduct(fromList)
-	if (fp >= 0 & ('description' in fromList)):
+	n = findProduct(fromList)
+	if (n >= 0 & ('description' in fromList)):
 		d = fromList.index('description')
 		dSer = df[fromCol[d]][~df[fromCol[d]].str.contains('nan')].tolist()
-		fpSer = df[fromCol[fp]][~df[fromCol[fp]].str.contains('nan')].tolist()
-		if (len(dSer) == 0 & len(fpSer) == 0):
-			return None
-		elif (len(dSer) == 0):
-			checkDup(fpSer)
-		elif (len(fpSer) == 0):
-			checkDup(dSer)
-		else:
-			checkDup(fpSer)
-			checkDup(dSer)
+		nSer = df[fromCol[fp]][~df[fromCol[fp]].str.contains('nan')].tolist()
+		merged = merged(dSer, nSer)
+		mergedSet = set(merged) 
 
-
-def checkDup(list):
-
-
+def merged(dList, pList):
+	merged = []
+	for idx, s in enumerate(dList):
+    	if pList[idx] in s: 
+        	merged.append(s)
+    	elif s in pList[idx]: 
+        	merged.append(pList[idx])
+    	else: 
+        	merged.append(pList[idx] + ' ' + s)
+    return merged
 
 def findProduct(fromList):
 	if ('production' in fromList):
@@ -71,6 +83,23 @@ def findProduct(fromList):
 	elif ('part #' in fromList):
 		return fromList.index('part #')
 	else: 
+		return -1
+
+def findPrice(fromList, fromCol, df):
+	if (('sales price unit' in fromList) & ('quote price unit' in fromList)):
+		si = fromList.index('sales price unit')
+		qi = fromList.index('quote price unit')
+		sales = len(df[fromCol[si]].dropna())
+		quote = len(df[fromCol[qi]].dropna())
+		if (sales >= quote):
+			return si
+		else:
+			return qi	
+	elif ('sales price unit' in fromList):
+		return fromList.index('sales price unit')
+	elif ('quote price unit' in fromList):
+		return fromList.index('quote price unit')
+	else:
 		return -1
 
 def compare(inTbl, inList):
