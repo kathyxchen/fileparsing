@@ -8,34 +8,38 @@ from itertools import groupby as g
 def common(l):
   return max(g(sorted(l)), key=lambda(x, v):(len(list(v)),-l.index(x)))[0]
 
-# used in readFile
-# convert to string & get rid of trailing whitespaces
 def cleanUp(strSeries):
 	return strSeries.apply(str).apply(str.strip)
 
 def findPartNum(word):
 	num = ''.join(x for x in word if x.isdigit())
-	cutoff = ((float(len(num))/float(len(word))) >= 0.6)
+	cutoff = ((float(len(num))/float(len(word))) >= 0.55)
 	return (len(word) >= 8) and cutoff
 
 import numpy as np
-def corresPrice(categList, df, infoDict, colNum, fromCol):
-	if (colNum >= 0 and len(infoDict) == 1):
-		mostFreq = common(df[fromCol[colNum]].tolist()) 
-		infoDict[infoDict.keys()[0]] = (infoDict[infoDict.keys()[0]], mostFreq)
+def corresPrice(categList, df, infoDict, priceCol, fromCol):
+	if (len(priceCol) > 0 and len(infoDict) == 1):
+		print "acc cp 1"
+		priceCol = [x for x in priceCol if not pd.isnull(x)]
+		if (len(priceCol) > 1):
+			infoDict[infoDict.keys()[0]][1] = common(priceCol) 
+		elif (len(priceCol) == 1):
+			infoDict[infoDict.keys()[0]][1] = priceCol[0]
 		return infoDict
-	elif (colNum >= 0 and len(infoDict) > 1):
+	elif (len(priceCol) > 0 and len(infoDict) > 1):
+		print "acc cp 2"
 		for k, v in infoDict.iteritems():
 			for x in categList:
+				df[x] = df[x].apply(str.upper)
 				arr = (df[x].str.contains(k))
 				if any(arr):
 					for idx, i in enumerate(arr):
 						if i: 
-							infoDict[k] = (v, (df.iloc[idx][fromCol[colNum]]))
+							v[1] = (priceCol[idx])
 							break
-				break
-			if ((len(infoDict[k]) == 1) or pd.isnull(infoDict[k][1])):
-				infoDict[k] = (v, ' ')
+					break
+			if (pd.isnull(v[1]) or v[1] == 'NaN'):
+				v[1] = 0.0
 		return infoDict
 	else:
 		return infoDict
@@ -58,29 +62,23 @@ def prodInfo(mergedSet, prodInfoDict):
 		if (pos >= 0 and (not inDict)):
 			# remove the part number from the des list
 			partNum = des.pop(idx)
-			prodInfoDict[partNum] = (' '.join(des))
+			prodInfoDict[partNum] = [(' '.join(des)), 0.0]
 		elif (pos < 0 and (not inDict)): 
 			name = ' '.join(des)[:128]
-			prodInfoDict[name] = (' '.join(des))
+			prodInfoDict[name] = [(' '.join(des)), 0.0]
 		return prodInfo(mergedSet, prodInfoDict)
 
-def merged(dList, pList):
+def merged(l1, l2):
 	merged = []
-	if (len(dList) == 0 and len(pList) == 0):
-		return merged
-	elif (len(dList) > 0 and len(pList) > 0):
-		for idx, s in enumerate(dList):
-			if pList[idx] in s: 
+	for idx, s in enumerate(l1):  
+		if (s != ' ' or l2[idx] != ' '):    
+			if l2[idx] in s: 
 				merged.append(s)
-			elif s in pList[idx]: 
-				merged.append(pList[idx])
+			elif s in l2[idx]: 
+				merged.append(l2[idx])
 			else: 
-				merged.append(pList[idx] + ' ' + s)
-		return merged
-	elif (len(dList) > 0):
-		return dList
-	else:
-		return pList
+				merged.append(l2[idx] + ' ' + s)
+	return merged
 
 def findProduct(fromList):
 	if ('production' in fromList):
@@ -94,18 +92,29 @@ def findPrice(fromList, fromCol, df):
 	if (('sales price unit' in fromList) and ('quote price unit' in fromList)):
 		si = fromList.index('sales price unit')
 		qi = fromList.index('quote price unit')
-		sales = len(df[fromCol[si]].dropna())
-		quote = len(df[fromCol[qi]].dropna())
-		if (sales >= quote):
-			return si
-		else:
-			return qi	
+		spu = df[fromCol[si]].tolist()
+		qpu = df[fromCol[qi]].tolist()
+		merged = []
+		for idx, x in enumerate(spu):
+			if pd.isnull(x):
+				x = ' ' 
+		for idx, x in enumerate(qpu):
+			if pd.isnull(x):
+				x = ' ' 
+		for idx, s in enumerate(spu):
+			if (s != ' ' and qpu[idx] != ' '):
+				merged.append(max(s, qpu[idx]))
+			elif (s != ' '):
+				merged.append(s)
+			else:
+				merged.append(qpu[idx])
+		return merged
 	elif ('sales price unit' in fromList):
-		return fromList.index('sales price unit')
+		return df[fromCol[fromList.index('sales price unit')]]
 	elif ('quote price unit' in fromList):
-		return fromList.index('quote price unit')
+		return df[fromCol[fromList.index('quote price unit')]]
 	else:
-		return -1
+		return []
 
 def compare(inTbl, inList):
 	# get rid of all whitespaces
@@ -130,34 +139,46 @@ def compare(inTbl, inList):
 	remain = len(inTbl) < (0.10 * float(len(inList)))
 	return (similarity and remain)
 
-def findInfo(fromList, fromCol, df, colNum):
+def replacement(lt):
+	for idx, item in enumerate(lt):
+		if item == 'nan':
+			lt[idx] = ' '
+	return lt
+
+def findInfo(fromList, fromCol, df, priceCol):
 	n = findProduct(fromList)
 	if (n >= 0 and ('description' in fromList)):
+		print "acc 1"
 		d = fromList.index('description')
 		categ = [fromCol[d], fromCol[n]]
-		dSer = df[fromCol[d]][~df[fromCol[d]].str.contains('nan')].tolist()
-		nSer = df[fromCol[n]][~df[fromCol[n]].str.contains('nan')].tolist()
+		dSer = replacement(df[fromCol[d]].tolist())
+		nSer = replacement(df[fromCol[n]].tolist())
 		m = merged(dSer, nSer)
 		# get rid of duplicates
+		m = [x.upper() for x in m]
 		mergedSet = set(m) 
 		result = prodInfo(mergedSet, {})
-		return corresPrice(categ, df, result, colNum, fromCol)
+		return corresPrice(categ, df, result, priceCol, fromCol)
 	elif ('description' in fromList):
+		print "acc 2"
 		categ = [fromCol[d]]
 		d = fromList.index('description')
 		dSer = df[fromCol[d]][~df[fromCol[d]].str.contains('nan')].tolist()
 		result = prodInfo(set(dSer), {})
-		return corresPrice(categ, df, result, colNum, fromCol) 
+		return corresPrice(categ, df, result, priceCol, fromCol) 
 	elif (n >= 0):
+		print "acc 3"
 		categ = [fromCol[n]]
 		nSer = df[fromCol[n]][~df[fromCol[n]].str.contains('nan')].tolist()
 		result = prodInfo(set(nSer), {})
-		return corresPrice(categ, df, result, colNum, fromCol)
+		return corresPrice(categ, df, result, priceCol, fromCol)
 	else:
+		print "acc 4"
 		return {}
 
-def readFile(filename, strList, csvDF):
-	df = pd.read_csv(filename, error_bad_lines=False)
+def readFile(filename, strList, csvDF, idx):
+	print filename
+	df = pd.read_csv(filename, error_bad_lines=False, skiprows=idx)
 	df = df.dropna(how='all')
 	# if the first line is a header--
 	# could replace this with a function that checked 
@@ -182,32 +203,46 @@ def readFile(filename, strList, csvDF):
 		# this only works b/c I know the first one will be assigned type string.
 		# could make a function that identifies this in case my argument is ordered differently.
 		df = df[~df[fromCol[0]].str.contains(fromCol[0])]
-	colNum = findPrice(fromList, fromCol, df)
-	infoDict = findInfo(fromList, fromCol, df, colNum)
+	#colNum = findPrice(fromList, fromCol, df)
+	#infoDict = findInfo(fromList, fromCol, df, colNum)
+	priceCol = findPrice(fromList, fromCol, df)
+	infoDict = findInfo(fromList, fromCol, df, priceCol)
 	dfList = []
 	for k, v in infoDict.iteritems():
-		dfList.append({'Product Name': k, 'Description': infoDict[k][0], 'Price': infoDict[k][1]})
+		k = k.replace(',',';')
+		v[0] = v[0].replace(',',';')
+		dfList.append({'Product Name': k, 'Description': v[0], 'Price': v[1]})
 	newDF = pd.DataFrame(dfList)
 	return pd.concat([newDF, csvDF])
 	#return newDF
 	#pd.DataFrame.append(csvDF, newDF)
 	#return csvDF
 
-# if i ever wanted to try a gen case
-def findAll(listOfLists, fromList):
-	solution = []
-	for l in listofLists:
-		pos = len(solution)
-		solution.append([])
-		for i in l:
-			if i in fromList:
-				solution[pos].append(fromList.index(i))
-	return solution
-
-class fileparse(folder):
+def fileparse(folder):
+	testDF = pd.DataFrame(columns = ['Product Name', 'Description', 'Price'])
 	location = "/Users/kathy/Documents/Dropbox/OpenERP/" + folder
 	for fn in os.listdir(location):
 		fpath = os.path.join(folder, fn)
 		if (os.path.isfile(fpath) and fpath.endswith(".csv")):
-			with open
+			with open(fpath, 'rU') as csvfile:
+				print csvfile   
+				rder = csv.reader(csvfile)
+				fstRow = (rder.next()[0] == '')
+				boolList = []
+				for row in rder:
+					boolList.append(''.join(row) == '')
+				idx = [(id + 1) for id, i in enumerate(boolList) if i]
+				if (fstRow):
+					ids = [0] + idx
+				strList = [('part #', True), ('description', True), ('production', True), ('sales price unit', False), ('quote price unit', False)]
+				testDF = readFile(fpath, strList, testDF, idx)
+	testDF.index = range(0, len(testDF.index))
+	testDF.to_csv('/Users/kathy/Documents/Dropbox/OpenERP/testProd.csv')
+	return testDF
 
+testDF = pd.DataFrame(columns = ['Product Name', 'Description', 'Price'])
+strList = [('part #', True), ('description', True), ('production', True), ('sales price unit', False), ('quote price unit', False)]
+filename = 'Magnetic Divert Controller.csv'
+test = readFile(filename, strList, testDF, [])
+test
+fileparse("DematicProdHist")
